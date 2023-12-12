@@ -6,7 +6,6 @@ const axios = require('axios');
 const connectDB = require('./db/connectDB.JS');
 const PaymantModel = require('./models/payment');
 
-
 const app = express();
 const port = process.env.PORT;
 
@@ -21,35 +20,35 @@ app.listen(port, () => {
 app.get('/', (req, res) => {
   res.send('<h1>Testing</h1>');
 });
-// app.get('/token', (req, res) => {
-//      generateToken();
-// });
+app.get('/token', (req, res) => {
+     generateToken();
+});
 //middlewere to generate token
 
-connectDB() 
+connectDB();
 
 const generateToken = async (req, res, next) => {
-    let consumer = process.env.MPESA_CONSUMER_KEY;
-    let secret = process.env.MPESA_CONSUMER_SECRET;
-    const auth = new Buffer.from(`${consumer}:${secret}`).toString("base64");
-    await axios
-        .get(
-            "https://sandbox.safaricom.co.ke/oauth/v1/generate?grant_type=client_credentials",
-            {
-                headers: {
-                    authorization: `Basic ${auth}`,
-                },
-            }
-        )
-        .then((response) => {
-            // console.log(response.data.access_token)
-            token = response.data.access_token
-            next();
-        })
-        .catch((err) => {
-            console.log(err);
-            res.status(400).json(err.message);
-        });
+  let consumer = process.env.MPESA_CONSUMER_KEY;
+  let secret = process.env.MPESA_CONSUMER_SECRET;
+  const auth = new Buffer.from(`${consumer}:${secret}`).toString('base64');
+  await axios
+    .get(
+      'https://sandbox.safaricom.co.ke/oauth/v1/generate?grant_type=client_credentials',
+      {
+        headers: {
+          authorization: `Basic ${auth}`,
+        },
+      }
+    )
+    .then((response) => {
+      console.log(response.data.access_token)
+      token = response.data.access_token;
+      next();
+    })
+    .catch((err) => {
+      console.log(err);
+      res.status(400).json(err.message);
+    });
 };
 //end
 
@@ -78,7 +77,7 @@ app.post('/stk', generateToken, async (req, res) => {
         PartyA: `254${phone}`,
         PartyB: shortCode,
         PhoneNumber: `254${phone}`,
-        CallBackURL: 'https://cb91-102-23-139-71.ngrok-free.app/callback',
+        CallBackURL: 'https://0f86-102-23-139-170.ngrok-free.app/callback',
         AccountReference: `254${phone}`,
         TransactionDesc: 'test',
       },
@@ -98,31 +97,45 @@ app.post('/stk', generateToken, async (req, res) => {
     });
 });
 
+app.post('/callback', (req, res) => {
+  const callbackData = req.body; //getting from saf
+  console.log(callbackData.Body);
+  if (!callbackData.Body.stkCallback.CallbackMetadata) {
+    console.log(callbackData.Body);
+    return res.json('ok');
+  }
+  console.log(callbackData.Body.stkCallback.CallbackMetadata);
 
-app.post("/callback", (req, res) => {
-    const callbackData = req.body; //getting from saf
-    console.log(callbackData.Body)
-    if(!callbackData.Body.stkCallback.CallbackMetadata){
-        console.log(callbackData.Body)
-        return res.json("ok")
-    }
-    console.log(callbackData.Body.stkCallback.CallbackMetadata)
+  const amount = callbackData.Body.stkCallback.CallbackMetadata.Item[0].Value;
+  const phone = callbackData.Body.stkCallback.CallbackMetadata.Item[4].Value;
+  const transaction_Id =
+    callbackData.Body.stkCallback.CallbackMetadata.Item[1].Value;
 
-    const amount = callbackData.Body.stkCallback.CallbackMetadata.Item[0].Value
-    const phone = callbackData.Body.stkCallback.CallbackMetadata.Item[4].Value;
-    const transaction_Id = callbackData.Body.stkCallback.CallbackMetadata.Item[1].Value;
+  console.log(amount, transaction_Id, phone);
 
-    console.log(amount, transaction_Id, phone)
+  const payment = new PaymantModel();
 
-    const payment = new PaymantModel()
+  payment.phone = phone;
+  payment.amount = amount;
+  payment.transaction_Id = transaction_Id;
 
-    payment.phone = phone;
-    payment.amount= amount;
-    payment.transaction_Id= transaction_Id
-
-    payment.save().then((data) => {
-      console.log(data)
-    }).catch((error) => {
-      console.log(error.message)
+  payment
+    .save()
+    .then((data) => {
+      res.status(201).json(data)
+      console.log(data);
     })
+    .catch((error) => {
+      res.status(500).json(error)
+      console.log(error.message);
+    });
+});
+
+app.get("/details", async(req, res) => {
+  try {
+    const transactionData = await PaymantModel.find()
+    res.status(200).json({success: true, transactionData})
+  } catch (error) {
+    console.log(error)
+  }
 })
